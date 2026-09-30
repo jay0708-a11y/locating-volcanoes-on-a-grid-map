@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ring of Fire Mapper</title>
+<style>
+  /* Layout concept: a field-journal expedition log — tab dividers for four
+     continent "field pages", a paper map stage with a live coordinate
+     readout, and a checklist column that fills in as volcanoes are found. */
+  :root{
+    --bg:#FBF6EF; --fg:#2B2118; --muted:#8A7A68; --card:#FFFFFF; --line:#E7DDCB;
+    --accent:#E8543E; --accent-2:#2E86AB; --sand:#C9A66B; --forest:#5B7B5D;
+    --card-soft:#FBF6EF; --shadow: 0 6px 18px rgba(43,33,24,.10);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#221A13; --fg:#F0E4D4; --muted:#C9B9A6; --card:#3A2C20; --line:#4A3A2A;
+      --accent:#F16A54; --accent-2:#4FA3C9; --sand:#D8B98A; --forest:#7C9E7E;
+      --card-soft:#2E241A; --shadow: 0 6px 18px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#221A13; --fg:#F0E4D4; --muted:#C9B9A6; --card:#3A2C20; --line:#4A3A2A;
+    --accent:#F16A54; --accent-2:#4FA3C9; --sand:#D8B98A; --forest:#7C9E7E;
+    --card-soft:#2E241A; --shadow: 0 6px 18px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Calibri,Roboto,sans-serif;
+    padding-inline:16px; padding-block:28px;
+  }
+  .display{font-family:Georgia,Cambria,"Times New Roman",serif;}
+  h1,h2,h3{text-wrap:balance; margin:0;}
+  .wrap{max-width:1180px; margin:0 auto;}
+
+  header.page{margin-bottom:22px;}
+  .eyebrow{
+    font-size:12.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--accent);
+  }
+  h1{font-size:clamp(26px,4vw,38px); margin-top:4px;}
+  .sub{color:var(--muted); font-size:15px; margin-top:6px; max-width:62ch;}
+
+  /* ---- Tutorial card ---- */
+  .tutorial{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:20px; box-shadow:var(--shadow); margin-bottom:24px;
+  }
+  .tutorial-head{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+  .tutorial-head h2{font-size:19px;}
+  .tut-body{display:flex; gap:26px; margin-top:16px; flex-wrap:wrap;}
+  .tut-grid{
+    position:relative; width:264px; height:198px; flex:none;
+    background:
+      repeating-linear-gradient(to right, transparent 0 32.5px, var(--line) 32.5px 33px),
+      repeating-linear-gradient(to bottom, transparent 0 32.5px, var(--line) 32.5px 33px);
+    border:2px solid var(--fg); border-radius:6px; margin-inline:auto;
+  }
+  .tut-col-label, .tut-row-label{
+    position:absolute; font-size:11px; font-weight:700; color:var(--muted);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .tut-hl-col{position:absolute; top:0; bottom:0; width:33px; background:rgba(232,84,62,.16); transition:left .5s ease;}
+  .tut-hl-row{position:absolute; left:0; right:0; height:33px; background:rgba(46,134,171,.16); transition:top .5s ease;}
+  .tut-pin{
+    position:absolute; width:14px; height:14px; border-radius:50%; background:var(--accent);
+    border:2px solid var(--card); box-shadow:0 0 0 2px var(--accent);
+    transform:translate(-50%,-50%) scale(0); transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .tut-pin.show{transform:translate(-50%,-50%) scale(1);}
+  .tut-steps{flex:1; min-width:240px; display:flex; flex-direction:column; gap:10px;}
+  .tut-step{
+    display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border-radius:10px;
+    border:1px solid transparent; transition:background .3s, border-color .3s;
+  }
+  .tut-step.active{background:var(--card-soft); border-color:var(--line);}
+  .tut-step-num{
+    flex:none; width:24px; height:24px; border-radius:50%; background:var(--sand); color:#2B2118;
+    font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;
+  }
+  .tut-step p{margin:0; font-size:14px; line-height:1.4;}
+  .tut-step b{color:var(--accent);}
+  .btn{
+    border:none; border-radius:999px; padding:9px 18px; font-weight:700; font-size:13.5px;
+    cursor:pointer; font-family:inherit; transition:transform .15s, opacity .15s;
+  }
+  .btn:active{transform:scale(.96);}
+  .btn-accent{background:var(--accent); color:#fff;}
+  .btn-ghost{background:transparent; color:var(--muted); border:1px solid var(--line);}
+  .btn:disabled{opacity:.45; cursor:default;}
+
+  /* ---- Tabs ---- */
+  .tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;}
+  .tab{
+    display:flex; align-items:center; gap:8px; padding:10px 16px; border-radius:12px 12px 0 0;
+    background:var(--card-soft); border:1px solid var(--line); border-bottom:none;
+    cursor:pointer; font-weight:700; font-size:13.5px; color:var(--muted);
+    transition:background .2s, color .2s;
+  }
+  .tab.active{background:var(--card); color:var(--fg); box-shadow:0 -2px 0 var(--accent) inset;}
+  .tab .badge{
+    font-size:11px; font-weight:700; background:var(--line); color:var(--muted);
+    padding:2px 7px; border-radius:999px;
+  }
+  .tab.done .badge{background:var(--forest); color:#fff;}
+
+  /* ---- Stage ---- */
+  .stage{
+    background:var(--card); border:1px solid var(--line); border-radius:0 14px 14px 14px;
+    box-shadow:var(--shadow); padding:18px; display:flex; gap:20px; flex-wrap:wrap;
+  }
+  .map-col{flex:2 1 480px; min-width:0;}
+  .map-frame{
+    position:relative; width:100%; border-radius:10px; overflow:hidden; border:1px solid var(--line);
+    cursor:crosshair; user-select:none; background:#fff;
+  }
+  .map-frame img{display:block; width:100%; height:auto; pointer-events:none;}
+  .guide-v, .guide-h{position:absolute; background:rgba(46,134,171,.55); pointer-events:none; display:none;}
+  .guide-v{top:0; bottom:0; width:1.5px;}
+  .guide-h{left:0; right:0; height:1.5px;}
+  .readout{
+    position:absolute; pointer-events:none; background:var(--fg); color:var(--bg);
+    font-size:11.5px; font-weight:700; padding:4px 8px; border-radius:6px; white-space:nowrap;
+    display:none; transform:translate(-50%,-130%);
+  }
+  .marker{
+    position:absolute; width:16px; height:16px; border-radius:50%; transform:translate(-50%,-50%) scale(0);
+    border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4);
+    transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .marker.show{transform:translate(-50%,-50%) scale(1);}
+  .marker.miss{
+    background:transparent; border:2.5px solid var(--accent); border-radius:3px;
+    animation:fadeout 1s forwards;
+  }
+  @keyframes fadeout{0%{opacity:1;}70%{opacity:1;}100%{opacity:0; transform:translate(-50%,-50%) scale(.6);}}
+  .map-cap{font-size:12px; color:var(--muted); margin-top:8px;}
+
+  .list-col{flex:1 1 280px; min-width:260px; display:flex; flex-direction:column;}
+  .list-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;}
+  .list-head h3{font-size:15px;}
+  .count{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .volc-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; max-height:420px; overflow-y:auto;}
+  .volc{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:9px;
+    border:1px solid var(--line); background:var(--card-soft); cursor:pointer;
+    transition:background .2s, border-color .2s;
+  }
+  .volc:hover{border-color:var(--accent-2);}
+  .volc.active{background:rgba(46,134,171,.14); border-color:var(--accent-2);}
+  .volc.found{opacity:.55; cursor:default;}
+  .volc.found:hover{border-color:var(--line);}
+  .volc-dot{flex:none; width:10px; height:10px; border-radius:50%; border:2px solid var(--card);}
+  .volc-info{min-width:0; flex:1;}
+  .volc-name{font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .volc-meta{font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .volc-check{flex:none; font-size:15px; color:var(--forest); opacity:0; transition:opacity .2s;}
+  .volc.found .volc-check{opacity:1;}
+  .hint{
+    margin-top:10px; font-size:12.5px; padding:9px 11px; border-radius:9px;
+    background:rgba(232,84,62,.12); color:var(--accent); display:none; font-weight:600;
+  }
+  .prompt{
+    margin-top:10px; font-size:12.5px; padding:9px 11px; border-radius:9px;
+    background:var(--card-soft); border:1px solid var(--line); color:var(--muted);
+  }
+
+  .finale{
+    display:none; margin-top:26px; background:var(--fg); color:var(--bg); border-radius:16px;
+    padding:30px; text-align:center;
+  }
+  .finale h2{font-family:Georgia,Cambria,serif; font-size:26px; color:#fff;}
+  .finale p{max-width:60ch; margin:10px auto 0; font-size:14.5px; color:#E7D9C6; line-height:1.6;}
+  .finale .stat{font-size:34px; font-weight:800; color:var(--accent);}
+
+  footer.note{margin-top:22px; font-size:12.5px; color:var(--muted); line-height:1.6; max-width:78ch;}
+  footer.note b{color:var(--fg);}
+
+  @media (max-width:640px){
+    .stage{padding:14px;}
+    .tabs{overflow-x:auto; flex-wrap:nowrap;}
+    .tab{white-space:nowrap;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .marker, .tut-pin, .tut-hl-col, .tut-hl-row{transition:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Science • The Birth of Rocks, Day 3</div>
+    <h1 class="display">Ring of Fire: Plot the Volcanoes</h1>
+    <p class="sub">Real grid coordinates, real volcanoes. Find each one on the map by its column and row — no printing, no partner needed. Class 4A, Mr. Jay.</p>
+  </header>
+
+  <section class="tutorial" id="tutorial">
+    <div class="tutorial-head">
+      <h2 class="display">How to read a grid</h2>
+      <button class="btn btn-ghost" id="replayBtn">↻ Replay example</button>
+    </div>
+    <div class="tut-body">
+      <div class="tut-grid" id="tutGrid">
+        <div class="tut-hl-col" id="tutHlCol"></div>
+        <div class="tut-hl-row" id="tutHlRow"></div>
+        <div class="tut-pin" id="tutPin"></div>
+      </div>
+      <div class="tut-steps">
+        <div class="tut-step" id="tutStep1">
+          <div class="tut-step-num">1</div>
+          <p><b>Find the column.</b> A location like "6, Y" gives the column NUMBER first — count across the top.</p>
+        </div>
+        <div class="tut-step" id="tutStep2">
+          <div class="tut-step-num">2</div>
+          <p><b>Find the row.</b> The LETTER comes second — count down the side.</p>
+        </div>
+        <div class="tut-step" id="tutStep3">
+          <div class="tut-step-num">3</div>
+          <p><b>Drop the pin.</b> Where the column and row meet is the exact spot — that's where Kilauea volcano is on the real map!</p>
+        </div>
+      </div>
+    </div>
+    <p class="hint" style="display:block; background:var(--card-soft); color:var(--muted); margin-top:14px;">
+      Move your mouse (or finger) over any map below — a little label will always tell you which column and row you're pointing at.
+    </p>
+  </section>
+
+  <div class="tabs" id="tabs"></div>
+  <div class="stage">
+    <div class="map-col">
+      <div class="map-frame" id="mapFrame">
+        <img id="mapImg" alt="Blank grid map">
+        <div class="guide-v" id="guideV"></div>
+        <div class="guide-h" id="guideH"></div>
+        <div class="readout" id="readout"></div>
+      </div>
+      <p class="map-cap" id="mapCap">Source: Mystery Science, "Could a volcano pop up where you live?"</p>
+    </div>
+    <div class="list-col">
+      <div class="list-head">
+        <h3 class="display" id="listTitle">North America</h3>
+        <span class="count" id="listCount">0 / 12 found</span>
+      </div>
+      <div class="prompt" id="promptBox">Click a volcano below, then click its spot on the map.</div>
+      <ul class="volc-list" id="volcList"></ul>
+      <div class="hint" id="hintBox"></div>
+    </div>
+  </div>
+
+  <section class="finale" id="finale">
+    <div class="stat" id="finaleStat">48 / 48</div>
+    <h2>You just mapped the Ring of Fire!</h2>
+    <p>Look back through all four continents — the dots trace a giant horseshoe around the edge of the Pacific Ocean. About 75% of the world's active volcanoes sit along this belt. It's no coincidence: it follows the edges of the tectonic plates underneath the Pacific.</p>
+    <p><b style="color:#fff">Talk about it:</b> which continent had the most volcanoes close together? Why do you think they cluster in lines instead of being spread out evenly?</p>
+  </section>
+
+  <footer class="note">
+    <p><b>How to run this live:</b> Do North America together first — share your screen, read each location out loud ("six, Y"), and let the class call out where to click. Then post this link in ClassDojo or the Meet chat so everyone finishes South America, Asia, and Australia &amp; Nearby Islands on their own device, at their own pace.</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- grid geometry, measured from the real worksheet (points, 150dpi render) ----
+  var PT_TO_PX = 150/72;
+  var COL0 = 62.075272, COL_STEP = (747.804419 - 62.075272) / 38;
+  var ROW0 = 123.649764, ROW_STEP = 18.0;
+  var IMG_W = 1650, IMG_H = 1275;
+
+  function colToPx(col){ return (COL0 + (col-1)*COL_STEP) * PT_TO_PX; }
+  function rowToPx(rowLetter){ return (ROW0 + (rowLetter.charCodeAt(0)-65)*ROW_STEP) * PT_TO_PX; }
+  function nearestCol(xNative){ var c = Math.round((xNative/PT_TO_PX - COL0)/COL_STEP) + 1; return Math.max(1, Math.min(39, c)); }
+  function nearestRow(yNative){ var r = Math.round((yNative/PT_TO_PX - ROW0)/ROW_STEP); r = Math.max(0, Math.min(25, r)); return String.fromCharCode(65+r); }
+
+  var CONTINENTS = [
+    { key:"NA", name:"North America", img:"na.png", list:[
+      {name:"Kilauea", country:"Hawaii, USA", year:2021, col:6, row:"Y"},
+      {name:"Lassen Peak", country:"California, USA", year:1915, col:16, row:"R"},
+      {name:"Mammoth Mountain", country:"California, USA", year:1400, col:17, row:"S"},
+      {name:"Mount Aniakchak", country:"Alaska, USA", year:1931, col:5, row:"K"},
+      {name:"Mount Cleveland", country:"Alaska, USA", year:2014, col:1, row:"M"},
+      {name:"Mount Redoubt", country:"Alaska, USA", year:2009, col:7, row:"H"},
+      {name:"Mount St. Helens", country:"Washington, USA", year:2008, col:15, row:"O"},
+      {name:"Mount Wrangell", country:"Alaska, USA", year:1999, col:9, row:"G"},
+      {name:"Pacaya", country:"Guatemala", year:2013, col:24, row:"Z"},
+      {name:"Parícutin", country:"Mexico", year:1952, col:21, row:"Y"},
+      {name:"Popocatepetl", country:"Mexico", year:2015, col:22, row:"Y"},
+      {name:"Tres Virgenes", country:"Mexico", year:1857, col:18, row:"W"}
+    ]},
+    { key:"SA", name:"South America", img:"sa.png", list:[
+      {name:"Burney", country:"Chile", year:1910, col:29, row:"V"},
+      {name:"Copahue", country:"Chile", year:2012, col:29, row:"Q"},
+      {name:"Mount Hudson", country:"Chile", year:1991, col:29, row:"T"},
+      {name:"Nevado del Ruiz", country:"Colombia", year:2012, col:28, row:"C"},
+      {name:"Planchón-Peteroa", country:"Chile", year:2010, col:29, row:"P"},
+      {name:"Pular", country:"Chile", year:1990, col:30, row:"L"},
+      {name:"Reventador", country:"Ecuador", year:2014, col:28, row:"D"},
+      {name:"Sabancaya", country:"Peru", year:2013, col:29, row:"I"},
+      {name:"San Pedro", country:"Chile", year:1960, col:30, row:"K"},
+      {name:"Turrialba", country:"Costa Rica", year:2015, col:26, row:"A"},
+      {name:"Wallatiri", country:"Chile", year:1985, col:30, row:"J"},
+      {name:"Wolf", country:"Galápagos, Ecuador", year:2015, col:24, row:"D"}
+    ]},
+    { key:"AS", name:"Asia", img:"as.png", list:[
+      {name:"Chirinkotan", country:"Russia", year:2013, col:32, row:"N"},
+      {name:"Chirpoi", country:"Russia", year:2013, col:31, row:"P"},
+      {name:"Gareloi Volcano", country:"Alaska, USA", year:1989, col:39, row:"M"},
+      {name:"Guishan Island", country:"Taiwan", year:1795, col:23, row:"X"},
+      {name:"Klyuchevskaya Sopka", country:"Russia", year:2015, col:34, row:"J"},
+      {name:"Koryaksky", country:"Russia", year:2008, col:33, row:"L"},
+      {name:"Kronotsky", country:"Russia", year:1923, col:34, row:"K"},
+      {name:"Mount Aso", country:"Japan", year:2004, col:26, row:"T"},
+      {name:"Mount Fuji", country:"Japan", year:1707, col:28, row:"T"},
+      {name:"Mount Meakan", country:"Japan", year:2008, col:29, row:"Q"},
+      {name:"Sakura-jima", country:"Japan", year:2013, col:26, row:"U"},
+      {name:"Zhupanovsky", country:"Russia", year:2015, col:34, row:"L"}
+    ]},
+    { key:"AU", name:"Australia & Nearby Islands", img:"au.png", list:[
+      {name:"Bagana", country:"Papua New Guinea", year:2006, col:32, row:"F"},
+      {name:"Egon", country:"Indonesia (Java)", year:2005, col:23, row:"G"},
+      {name:"Garbuna Group", country:"Papua New Guinea", year:2005, col:31, row:"F"},
+      {name:"Kaba", country:"Indonesia (Sumatra)", year:2000, col:18, row:"E"},
+      {name:"Kanlaon", country:"Philippines", year:2006, col:24, row:"A"},
+      {name:"Manam", country:"Papua New Guinea", year:2006, col:30, row:"F"},
+      {name:"Merapi", country:"Indonesia (Java)", year:2010, col:21, row:"G"},
+      {name:"Mount Tongariro", country:"New Zealand", year:2012, col:38, row:"Q"},
+      {name:"Papandayan", country:"Indonesia (Java)", year:2002, col:19, row:"F"},
+      {name:"Rinjani", country:"Indonesia (Java)", year:2004, col:22, row:"G"},
+      {name:"Sinabung", country:"Indonesia (Sumatra)", year:2014, col:17, row:"D"},
+      {name:"Soputan", country:"Indonesia (Java)", year:2007, col:24, row:"D"}
+    ]}
+  ];
+
+  CONTINENTS.forEach(function(c){
+    c.list.forEach(function(v){ v.found = false; });
+  });
+
+  var activeContinent = 0;
+  var activeVolcano = null; // index within current list
+
+  var tabsEl = document.getElementById("tabs");
+  var mapFrame = document.getElementById("mapFrame");
+  var mapImg = document.getElementById("mapImg");
+  var guideV = document.getElementById("guideV");
+  var guideH = document.getElementById("guideH");
+  var readout = document.getElementById("readout");
+  var listTitle = document.getElementById("listTitle");
+  var listCount = document.getElementById("listCount");
+  var volcListEl = document.getElementById("volcList");
+  var hintBox = document.getElementById("hintBox");
+  var promptBox = document.getElementById("promptBox");
+  var finale = document.getElementById("finale");
+  var finaleStat = document.getElementById("finaleStat");
+
+  function buildTabs(){
+    tabsEl.innerHTML = "";
+    CONTINENTS.forEach(function(c, i){
+      var found = c.list.filter(function(v){return v.found;}).length;
+      var tab = document.createElement("div");
+      tab.className = "tab" + (i === activeContinent ? " active" : "") + (found === 12 ? " done" : "");
+      tab.innerHTML = '<span>' + c.name + '</span><span class="badge">' + found + '/12</span>';
+      tab.addEventListener("click", function(){ activeContinent = i; activeVolcano = null; render(); });
+      tabsEl.appendChild(tab);
+    });
+  }
+
+  function markerColor(){ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(); }
+
+  function renderMarkers(continent){
+    var existing = mapFrame.querySelectorAll(".marker");
+    existing.forEach(function(m){ m.remove(); });
+    continent.list.forEach(function(v){
+      if(!v.found) return;
+      var m = document.createElement("div");
+      m.className = "marker";
+      m.style.left = (colToPx(v.col)/IMG_W*100) + "%";
+      m.style.top = (rowToPx(v.row)/IMG_H*100) + "%";
+      m.style.background = markerColor();
+      mapFrame.appendChild(m);
+      requestAnimationFrame(function(){ m.classList.add("show"); });
+    });
+  }
+
+  function renderList(continent){
+    listTitle.textContent = continent.name;
+    var found = continent.list.filter(function(v){return v.found;}).length;
+    listCount.textContent = found + " / 12 found";
+    volcListEl.innerHTML = "";
+    continent.list.forEach(function(v, i){
+      var li = document.createElement("li");
+      li.className = "volc" + (v.found ? " found" : "") + (activeVolcano === i ? " active" : "");
+      li.innerHTML =
+        '<span class="volc-dot" style="background:' + (v.found ? markerColor() : "var(--line)") + '"></span>' +
+        '<span class="volc-info"><span class="volc-name">' + v.name + '</span>' +
+        '<span class="volc-meta">' + v.country + ' · last erupted ' + v.year + '</span></span>' +
+        '<span class="volc-check">✓</span>';
+      if(!v.found){
+        li.addEventListener("click", function(){ activeVolcano = i; hintBox.style.display = "none"; render(); });
+      }
+      volcListEl.appendChild(li);
+    });
+    if(found === 12){
+      promptBox.textContent = "All twelve found! Look at the pattern the dots make, then try another continent.";
+    } else if(activeVolcano !== null && !continent.list[activeVolcano].found){
+      promptBox.textContent = "Now find " + continent.list[activeVolcano].name + " on the map — it's at column " + continent.list[activeVolcano].col + ", row " + continent.list[activeVolcano].row + ".";
+    } else {
+      promptBox.textContent = "Click a volcano below, then click its spot on the map.";
+    }
+  }
+
+  function checkFinale(){
+    var totalFound = 0, total = 0;
+    CONTINENTS.forEach(function(c){ c.list.forEach(function(v){ total++; if(v.found) totalFound++; }); });
+    finaleStat.textContent = totalFound + " / " + total;
+    finale.style.display = (totalFound === total) ? "block" : "none";
+    if(totalFound === total){ finale.scrollIntoView({behavior:"smooth", block:"nearest"}); }
+  }
+
+  function render(){
+    var continent = CONTINENTS[activeContinent];
+    mapImg.src = continent.img;
+    mapImg.alt = continent.name + " blank grid map";
+    buildTabs();
+    renderList(continent);
+    // markers redraw once image is loaded so % positioning is accurate
+    if(mapImg.complete){ renderMarkers(continent); } else { mapImg.onload = function(){ renderMarkers(continent); }; }
+    checkFinale();
+  }
+
+  function nativeXY(evt){
+    var rect = mapFrame.getBoundingClientRect();
+    var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+    var clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+    var fracX = (clientX - rect.left) / rect.width;
+    var fracY = (clientY - rect.top) / rect.height;
+    fracX = Math.max(0, Math.min(1, fracX));
+    fracY = Math.max(0, Math.min(1, fracY));
+    return { x: fracX * IMG_W, y: fracY * IMG_H, fracX: fracX, fracY: fracY };
+  }
+
+  mapFrame.addEventListener("mousemove", function(evt){
+    var p = nativeXY(evt);
+    var col = nearestCol(p.x), row = nearestRow(p.y);
+    guideV.style.display = "block";
+    guideH.style.display = "block";
+    guideV.style.left = (colToPx(col)/IMG_W*100) + "%";
+    guideH.style.top = (rowToPx(row)/IMG_H*100) + "%";
+    readout.style.display = "block";
+    readout.style.left = (p.fracX*100) + "%";
+    readout.style.top = (p.fracY*100) + "%";
+    readout.textContent = "Column " + col + " • Row " + row;
+  });
+  mapFrame.addEventListener("mouseleave", function(){
+    guideV.style.display = "none";
+    guideH.style.display = "none";
+    readout.style.display = "none";
+  });
+
+  function attemptPlot(evt){
+    if(activeVolcano === null) { promptBox.textContent = "Pick a volcano from the list first, then click its spot!"; return; }
+    var continent = CONTINENTS[activeContinent];
+    var target = continent.list[activeVolcano];
+    if(target.found) return;
+    var p = nativeXY(evt);
+    var col = nearestCol(p.x), row = nearestRow(p.y);
+    if(col === target.col && row === target.row){
+      target.found = true;
+      hintBox.style.display = "none";
+      var next = continent.list.findIndex(function(v){ return !v.found; });
+      activeVolcano = next === -1 ? null : next;
+      render();
+    } else {
+      var miss = document.createElement("div");
+      miss.className = "marker miss";
+      miss.style.left = (p.fracX*100) + "%";
+      miss.style.top = (p.fracY*100) + "%";
+      mapFrame.appendChild(miss);
+      setTimeout(function(){ miss.remove(); }, 1000);
+      hintBox.style.display = "block";
+      hintBox.textContent = "Not quite — " + target.name + " is at column " + target.col + ", row " + target.row + ". Check the column number first, then the row letter.";
+    }
+  }
+  mapFrame.addEventListener("click", attemptPlot);
+
+  buildTabs();
+  render();
+
+  // ---- tutorial mini animation ----
+  var tutSequence = [
+    { col:4, row:2, step:1 }, // highlight column only
+    { col:4, row:2, step:2 }, // highlight row too
+    { col:4, row:2, step:3, pin:true } // drop pin
+  ];
+  var TUT_COLS = 8, TUT_ROWS = 6, TUT_CELL = 33;
+  var tutHlCol = document.getElementById("tutHlCol");
+  var tutHlRow = document.getElementById("tutHlRow");
+  var tutPin = document.getElementById("tutPin");
+  var steps = [document.getElementById("tutStep1"), document.getElementById("tutStep2"), document.getElementById("tutStep3")];
+
+  function runTutorial(){
+    tutPin.classList.remove("show");
+    steps.forEach(function(s){ s.classList.remove("active"); });
+    var colPx = (4-1)*TUT_CELL;
+    var rowPx = (2)*TUT_CELL; // row C = index 2
+    tutHlCol.style.display = "none";
+    tutHlRow.style.display = "none";
+    setTimeout(function(){
+      tutHlCol.style.left = colPx + "px";
+      tutHlCol.style.display = "block";
+      steps[0].classList.add("active");
+    }, 200);
+    setTimeout(function(){
+      tutHlRow.style.top = rowPx + "px";
+      tutHlRow.style.display = "block";
+      steps[0].classList.remove("active");
+      steps[1].classList.add("active");
+    }, 1200);
+    setTimeout(function(){
+      tutPin.style.left = (colPx + TUT_CELL/2) + "px";
+      tutPin.style.top = (rowPx + TUT_CELL/2) + "px";
+      tutPin.classList.add("show");
+      steps[1].classList.remove("active");
+      steps[2].classList.add("active");
+    }, 2200);
+  }
+  // build column/row tick labels for the tutorial grid once
+  (function(){
+    var grid = document.getElementById("tutGrid");
+    for(var c=1;c<=TUT_COLS;c++){
+      var lab = document.createElement("div");
+      lab.className = "tut-col-label";
+      lab.textContent = c;
+      lab.style.left = ((c-1)*TUT_CELL) + "px";
+      lab.style.top = "-18px";
+      lab.style.width = TUT_CELL + "px";
+      grid.appendChild(lab);
+    }
+    var letters = ["A","B","C","D","E","F"];
+    letters.forEach(function(L, i){
+      var lab = document.createElement("div");
+      lab.className = "tut-row-label";
+      lab.textContent = L;
+      lab.style.left = "-20px";
+      lab.style.top = (i*TUT_CELL) + "px";
+      lab.style.height = TUT_CELL + "px";
+      grid.appendChild(lab);
+    });
+  })();
+  document.getElementById("replayBtn").addEventListener("click", runTutorial);
+  setTimeout(runTutorial, 500);
+
+})();
+</script>
+</body>
+</html>
